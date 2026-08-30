@@ -14,3 +14,4 @@ sentence-transformers
 transformers
 pydantic
 mlflow
+opencv-python-headless
