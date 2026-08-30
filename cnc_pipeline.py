@@ -1,3 +1,4 @@
+%%writefile cnc_pipeline.py
 """
 Multi-Modal Factory AI Intelligence & Digital Twin Pipeline
 Contains Stage I through Stage VIII processing logic.
@@ -14,15 +15,21 @@ import cv2
 from PIL import Image
 from fpdf import FPDF
 import xgboost as xgb
-import mlflow
-import mlflow.xgboost
-import mlflow.pytorch
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
 from transformers import pipeline
 import faiss
 from sentence_transformers import SentenceTransformer
 from pydantic import BaseModel, Field
 from typing import Dict, Any
+
+# Safe MLflow Import (Bypasses Python 3.14 / Protobuf compatibility bugs on cloud servers)
+try:
+    import mlflow
+    import mlflow.xgboost
+    import mlflow.pytorch
+    MLFLOW_AVAILABLE = True
+except Exception:
+    MLFLOW_AVAILABLE = False
 
 # --- DIRECTORY SETUP ---
 BASE_DIR = "factory_data"
@@ -147,7 +154,6 @@ SOP_DOCUMENTS = [
 ]
 
 def retrieve_rag_evidence(query):
-    # Lightweight text matching for real-time app execution
     if "temp" in query.lower() or "overheat" in query.lower() or "thermal" in query.lower():
         return SOP_DOCUMENTS[0]
     return SOP_DOCUMENTS[1]
@@ -179,20 +185,16 @@ class ExecutiveActionPlan(BaseModel):
     justification: str
 
 def run_multi_agent_pipeline(machine_id: str, temperature: float, vibration: float, text_note: str):
-    # Agent 1: Predictive Maintenance Agent
     prob = min(1.0, (temperature / 100.0) * 0.5 + (vibration / 5.0) * 0.5)
     risk = "HIGH" if prob > 0.65 else ("ELEVATED" if prob > 0.4 else "LOW")
     pred_res = PredictiveMaintenanceResult(machine_id=machine_id, failure_probability=round(prob, 3), risk_level=risk)
 
-    # Agent 2: Vision Agent
     has_defect = vibration > 3.5 or temperature > 85.0
     vision_res = VisionAnalysisResult(defect_detected=has_defect, severity="CRITICAL" if has_defect else "NONE", confidence=0.95)
 
-    # Agent 3: Knowledge Agent
     rag_doc = retrieve_rag_evidence(f"{temperature} {vibration} {text_note}")
     know_res = KnowledgeRetrievalResult(relevant_doc_id=rag_doc["doc_id"], section=rag_doc["section"], grounded_procedure=rag_doc["content"])
 
-    # Agent 4: Orchestration/Planning Agent
     composite_risk = (pred_res.failure_probability * 0.6) + (0.4 if vision_res.defect_detected else 0.0)
     hitl_flag = composite_risk > 0.60
     
