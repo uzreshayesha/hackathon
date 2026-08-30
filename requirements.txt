@@ -1,0 +1,16 @@
+streamlit
+pandas
+numpy
+xgboost
+scikit-learn
+torch
+torchvision
+matplotlib
+seaborn
+reportlab
+fpdf2
+faiss-cpu
+sentence-transformers
+transformers
+pydantic
+mlflow

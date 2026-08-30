@@ -1,0 +1,13 @@
+{
+  "learner": {
+    "attributes": { "best_iteration": "0" },
+    "gradient_booster": {
+      "model": {
+        "gbtree_model_param": { "num_trees": "1" },
+        "trees": []
+      }
+    },
+    "objective": { "name": "binary:logistic" }
+  },
+  "version": [1, 7, 6]
+}
