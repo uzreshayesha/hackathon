@@ -1,27 +1,27 @@
-code = '''"""
+"""
 Multi-Modal Factory AI Intelligence & Digital Twin Pipeline
 Contains Stage I through Stage VIII processing logic.
 """
 
 import os
 import json
-import torch
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pandas as pd
-import cv2
-from PIL import Image
-from fpdf import FPDF
-import xgboost as xgb
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
-from transformers import pipeline
-import faiss
-from sentence_transformers import SentenceTransformer
-from pydantic import BaseModel, Field
-from typing import Dict, Any
 
-# Safe MLflow Import
+# Lazy optional imports with safe fallbacks
+try:
+    import torch
+    import torch.nn as nn
+    TORCH_AVAILABLE = True
+except Exception:
+    TORCH_AVAILABLE = False
+
+try:
+    import xgboost as xgb
+    XGB_AVAILABLE = True
+except Exception:
+    XGB_AVAILABLE = False
+
 try:
     import mlflow
     import mlflow.xgboost
@@ -29,6 +29,9 @@ try:
     MLFLOW_AVAILABLE = True
 except Exception:
     MLFLOW_AVAILABLE = False
+
+from pydantic import BaseModel, Field
+from typing import Dict, Any
 
 # --- DIRECTORY SETUP ---
 BASE_DIR = "factory_data"
@@ -39,8 +42,10 @@ OS_DIRS = {
     "pdfs": os.path.join(BASE_DIR, "pdfs"),
     "processed": os.path.join(BASE_DIR, "processed")
 }
+
 for d in OS_DIRS.values():
     os.makedirs(d, exist_ok=True)
+
 
 # --- STAGE I: DATA GENERATION & ENGINEERING ---
 def generate_and_preprocess_factory_data(num_records=1500, num_images=60):
@@ -69,8 +74,12 @@ def generate_and_preprocess_factory_data(num_records=1500, num_images=60):
         "failure_target": failure_target
     })
 
-    df_telemetry["temp_roll_mean_15m"] = df_telemetry.groupby("machine_id")["temperature"].transform(lambda x: x.rolling(15, min_periods=1).mean())
-    df_telemetry["vib_roll_std_15m"] = df_telemetry.groupby("machine_id")["vibration"].transform(lambda x: x.rolling(15, min_periods=1).std().fillna(0))
+    df_telemetry["temp_roll_mean_15m"] = df_telemetry.groupby("machine_id")["temperature"].transform(
+        lambda x: x.rolling(15, min_periods=1).mean()
+    )
+    df_telemetry["vib_roll_std_15m"] = df_telemetry.groupby("machine_id")["vibration"].transform(
+        lambda x: x.rolling(15, min_periods=1).std().fillna(0)
+    )
     df_telemetry["stress_index"] = (df_telemetry["temperature"] * df_telemetry["vibration"]) / (df_telemetry["pressure"] + 1e-5)
 
     df_telemetry['temperature'] = df_telemetry['temperature'].ffill().bfill()
@@ -99,9 +108,14 @@ def generate_and_preprocess_factory_data(num_records=1500, num_images=60):
 
     return df_telemetry
 
+
 # --- STAGE II: MACHINE LEARNING ---
 def train_xgboost_model():
-    train_df = pd.read_csv(os.path.join(OS_DIRS["processed"], "train.csv"))
+    train_path = os.path.join(OS_DIRS["processed"], "train.csv")
+    if not os.path.exists(train_path):
+        generate_and_preprocess_factory_data()
+
+    train_df = pd.read_csv(train_path)
     features = ['temperature', 'vibration', 'pressure', 'rpm', 'temp_roll_mean_15m', 'vib_roll_std_15m', 'stress_index']
     
     X_train, y_train = train_df[features], train_df['failure_target']
@@ -114,10 +128,13 @@ def train_xgboost_model():
         "random_state": 42
     }
     
-    baseline_model = xgb.XGBClassifier(**xgb_params)
-    baseline_model.fit(X_train, y_train)
-    baseline_model.save_model("factory_champion_model.json")
-    return baseline_model
+    if XGB_AVAILABLE:
+        baseline_model = xgb.XGBClassifier(**xgb_params)
+        baseline_model.fit(X_train, y_train)
+        baseline_model.save_model("factory_champion_model.json")
+        return baseline_model
+    return None
+
 
 # --- STAGE III: CV & NLP ANALYTICS ---
 def analyze_maintenance_log(text_log):
@@ -129,6 +146,7 @@ def analyze_maintenance_log(text_log):
         "urgency_level": urgency,
         "keyword_flag": contains_critical
     }
+
 
 # --- STAGE IV: RAG GROUNDING ENGINE ---
 SOP_DOCUMENTS = [
@@ -146,10 +164,13 @@ SOP_DOCUMENTS = [
     }
 ]
 
+
 def retrieve_rag_evidence(query):
-    if "temp" in query.lower() or "overheat" in query.lower() or "thermal" in query.lower():
+    query_str = str(query).lower()
+    if "temp" in query_str or "overheat" in query_str or "thermal" in query_str:
         return SOP_DOCUMENTS[0]
     return SOP_DOCUMENTS[1]
+
 
 # --- STAGE V: MULTI-AGENT SCHEMAS ---
 class VisionAnalysisResult(BaseModel):
@@ -158,11 +179,13 @@ class VisionAnalysisResult(BaseModel):
     severity: str
     confidence: float
 
+
 class PredictiveMaintenanceResult(BaseModel):
     agent_name: str = "Predictive Maintenance Agent"
     machine_id: str
     failure_probability: float
     risk_level: str
+
 
 class KnowledgeRetrievalResult(BaseModel):
     agent_name: str = "Knowledge Agent"
@@ -170,12 +193,14 @@ class KnowledgeRetrievalResult(BaseModel):
     section: str
     grounded_procedure: str
 
+
 class ExecutiveActionPlan(BaseModel):
     orchestrator: str = "Planning & Decision Agent"
     final_risk_score: float
     recommended_action: str
     human_in_the_loop_required: bool
     justification: str
+
 
 def run_multi_agent_pipeline(machine_id: str, temperature: float, vibration: float, text_note: str):
     prob = min(1.0, (temperature / 100.0) * 0.5 + (vibration / 5.0) * 0.5)
@@ -186,13 +211,23 @@ def run_multi_agent_pipeline(machine_id: str, temperature: float, vibration: flo
     vision_res = VisionAnalysisResult(defect_detected=has_defect, severity="CRITICAL" if has_defect else "NONE", confidence=0.95)
 
     rag_doc = retrieve_rag_evidence(f"{temperature} {vibration} {text_note}")
-    know_res = KnowledgeRetrievalResult(relevant_doc_id=rag_doc["doc_id"], section=rag_doc["section"], grounded_procedure=rag_doc["content"])
+    know_res = KnowledgeRetrievalResult(
+        relevant_doc_id=rag_doc["doc_id"],
+        section=rag_doc["section"],
+        grounded_procedure=rag_doc["content"]
+    )
 
     composite_risk = (pred_res.failure_probability * 0.6) + (0.4 if vision_res.defect_detected else 0.0)
     hitl_flag = composite_risk > 0.60
-    
-    action = f"PAUSE PRODUCTION: Supervisor Approval Required for {know_res.relevant_doc_id}" if hitl_flag else f"Autonomous parameter adjustment under {know_res.relevant_doc_id}"
-    justification = f"Composite risk score ({composite_risk:.2f}) exceeded safe operation threshold." if hitl_flag else "System Operating within safe parameters."
+
+    action = (
+        f"PAUSE PRODUCTION: Supervisor Approval Required for {know_res.relevant_doc_id}"
+        if hitl_flag else f"Autonomous parameter adjustment under {know_res.relevant_doc_id}"
+    )
+    justification = (
+        f"Composite risk score ({composite_risk:.2f}) exceeded safe operation threshold."
+        if hitl_flag else "System Operating within safe parameters."
+    )
 
     plan = ExecutiveActionPlan(
         final_risk_score=round(composite_risk, 3),
@@ -202,9 +237,3 @@ def run_multi_agent_pipeline(machine_id: str, temperature: float, vibration: flo
     )
 
     return vision_res, pred_res, know_res, plan
-'''
-
-with open("cnc_pipeline.py", "w") as f:
-    f.write(code)
-
-print("Successfully overwritten cnc_pipeline.py cleanly!")
