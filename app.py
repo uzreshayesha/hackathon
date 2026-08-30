@@ -14,7 +14,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-# Import pipeline elements
+# Import pipeline elements safely
 from cnc_pipeline import run_multi_agent_pipeline, generate_and_preprocess_factory_data, train_xgboost_model
 
 # Page Configuration
@@ -27,7 +27,7 @@ st.set_page_config(
 st.title("🏭 AI-Powered Predictive Maintenance & Digital Twin System")
 st.caption("Integrated Multi-Modal Industrial Intelligence Dashboard | Smart Factory Operations")
 
-# Initialize Data and Model
+# Initialize Data safely
 @st.cache_data
 def load_initial_data():
     return generate_and_preprocess_factory_data()
@@ -75,7 +75,7 @@ with tab1:
 
     st.markdown("---")
     st.subheader("📜 RAG Grounded Manual SOP Passage")
-    st.blockquote(know_res.grounded_procedure)
+    st.markdown(f"> **{know_res.section}:** {know_res.grounded_procedure}")
 
 with tab2:
     st.subheader("🔮 Digital Twin Scenario Simulation Engine")
@@ -121,12 +121,17 @@ with tab3:
             "composite_risk": exec_plan.final_risk_score
         }
         
-        log_file = "factory_data/hitl_decision_audit_log.json"
+        log_dir = "factory_data"
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, "hitl_decision_audit_log.json")
+        
         existing_logs = []
         if os.path.exists(log_file):
             with open(log_file, "r") as f:
-                try: existing_logs = json.load(f)
-                except: existing_logs = []
+                try:
+                    existing_logs = json.load(f)
+                except Exception:
+                    existing_logs = []
         
         existing_logs.append(audit_entry)
         with open(log_file, "w") as f:
