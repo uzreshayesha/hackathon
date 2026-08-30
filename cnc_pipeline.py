@@ -1,4 +1,4 @@
-%%writefile cnc_pipeline.py
+
 """
 Multi-Modal Factory AI Intelligence & Digital Twin Pipeline
 Contains Stage I through Stage VIII processing logic.
